@@ -45,7 +45,7 @@ func (s *Server) handleConn(conn *minecraft.Conn) {
 		data, err := conn.ReadBytes()
 		if err != nil {
 			log.Println("not read packet, err:", err)
-			continue
+			return
 		}
 
 		pk, err := decoder.ParseData(data)
@@ -61,7 +61,8 @@ func (s *Server) handleConn(conn *minecraft.Conn) {
 			form.Marshal(pIO)
 
 			fmt.Println(form)
-			d, _ := form.ResponseData.Value()
+			d, ok := form.ResponseData.Value()
+			fmt.Printf("ok: %v\n", ok)
 			fmt.Printf("string(d): %v\n", string(d))
 		}
 	}

@@ -29,6 +29,8 @@ func New(cfg *ServerConfig, modules []modules.Module) *Server {
 		listenConfig: listenConfig,
 		modules:      modules,
 		proto:        minecraft.DefaultProtocol,
+
+		connections: map[string]*Conn{},
 	}
 
 	return srv
