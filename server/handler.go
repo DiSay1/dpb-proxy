@@ -3,10 +3,12 @@ package server
 import (
 	"encoding/json"
 	"log"
-	"sync"
+	"time"
 
 	"github.com/df-mc/dragonfly/server/player/form"
+	"github.com/go-gl/mathgl/mgl32"
 	"github.com/sandertv/gophertunnel/minecraft"
+	"github.com/sandertv/gophertunnel/minecraft/protocol"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 	"proj.dichay.tech/dpb-proxy/decoder"
 )
@@ -73,31 +75,37 @@ func (s *Server) handleConn(conn *minecraft.Conn) {
 		delete(s.connections, playerInfo.XUID)
 	}()
 
-	var g sync.WaitGroup
-	g.Add(2)
+	d := serverConn.GameData()
 
-	hasErr := false
-	go func() {
-		if err := conn.StartGame(serverConn.GameData()); err != nil {
-			log.Println("not start game, err:", err)
-			hasErr = true
-		}
-		g.Done()
-	}()
+	conn.WritePacket(&packet.ChangeDimension{
+		Dimension:       d.Dimension,
+		Position:        d.PlayerPosition,
+		LoadingScreenID: protocol.Option(uint32(time.Now().Unix())),
+	})
+	conn.WritePacket(&packet.StopSound{StopAll: true})
+	conn.WritePacket(&packet.PlayStatus{Status: packet.PlayStatusPlayerSpawn})
 
-	go func() {
-		if err := serverConn.DoSpawn(); err != nil {
-			log.Println("not start game, err:", err)
-			hasErr = true
-		}
-		g.Done()
-	}()
+	conn.WritePacket(&packet.PlayerAction{
+		EntityRuntimeID: d.EntityRuntimeID,
+		ActionType:      protocol.PlayerActionDimensionChangeDone,
+	})
 
-	g.Wait()
+	conn.WritePacket(&packet.MovePlayer{
+		EntityRuntimeID: d.EntityRuntimeID,
 
-	if hasErr {
-		return
-	}
+		Position: d.PlayerPosition,
+		Pitch:    d.Pitch,
+		Yaw:      d.Yaw,
+		HeadYaw:  d.Yaw,
+		Mode:     packet.MoveModeTeleport,
+	})
+
+	conn.WritePacket(&packet.MoveActorAbsolute{
+		EntityRuntimeID: d.EntityRuntimeID,
+		Position:        d.PlayerPosition,
+		Rotation:        mgl32.Vec3{d.Pitch, d.Yaw, d.Yaw},
+		Flags:           packet.MoveFlagTeleport,
+	})
 
 	go s.toServer(conn, serverConn)
 	s.toClient(conn, serverConn)

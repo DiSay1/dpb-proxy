@@ -20,6 +20,7 @@ func (s *Server) listen() {
 
 		c, ok := conn.(*minecraft.Conn)
 		if !ok {
+			c.Close()
 			continue
 		}
 
