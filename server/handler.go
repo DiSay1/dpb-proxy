@@ -18,6 +18,8 @@ func (f ServerSelect) Submit(submitter form.Submitter) {
 }
 
 func (s *Server) handleConn(conn *minecraft.Conn) {
+	log.Printf("%v joined!\n", conn.IdentityData().DisplayName)
+
 	if err := conn.StartGame(minecraft.GameData{}); err != nil {
 		log.Println("not start game, err:", err)
 
@@ -53,6 +55,12 @@ func (s *Server) handleConn(conn *minecraft.Conn) {
 	}.Dial("raknet", serverInfo.Address)
 	if err != nil {
 		panic(err)
+	}
+
+	if err := conn.StartGame(serverConn.GameData()); err != nil {
+		log.Println("not start game, err:", err)
+
+		return
 	}
 
 	defer func() {
