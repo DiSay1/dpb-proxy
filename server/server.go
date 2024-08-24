@@ -43,7 +43,7 @@ func (s *Server) Listen() {
 	}
 
 	for _, module := range s.modules {
-		err := module.Init()
+		err := module.Init(s)
 		if err != nil {
 			log.Fatalln("not init module, err:", err)
 		}
@@ -51,4 +51,12 @@ func (s *Server) Listen() {
 
 	s.listener = listener
 	s.listen()
+}
+
+func (s *Server) GetConnections() map[string]*Conn {
+	return s.connections
+}
+
+func (s *Server) GetProto() minecraft.Protocol {
+	return s.proto
 }

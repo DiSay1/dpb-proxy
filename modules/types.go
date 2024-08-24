@@ -6,7 +6,7 @@ import (
 )
 
 type Module interface {
-	ToServer(conn *minecraft.Conn, pk *decoder.PacketData) error
-	ToClient(conn *minecraft.Conn, pk *decoder.PacketData) error
-	Init() error
+	ToServer(clientConn *minecraft.Conn, serverConn *minecraft.Conn, pk *decoder.PacketData) (bool, error)
+	ToClient(clientConn *minecraft.Conn, serverConn *minecraft.Conn, pk *decoder.PacketData) (bool, error)
+	Init(server any) error
 }

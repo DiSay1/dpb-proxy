@@ -2,7 +2,6 @@ package server
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 
 	"github.com/df-mc/dragonfly/server/player/form"
@@ -25,9 +24,9 @@ func (s *Server) handleConn(conn *minecraft.Conn) {
 		return
 	}
 
-	serversName := []string{}
-	for _, server := range s.cfg.Servers {
-		serversName = append(serversName, server.Name)
+	serversName := make([]string, len(s.cfg.Servers))
+	for i, server := range s.cfg.Servers {
+		serversName[i] = server.Name
 	}
 	serverForm := form.New(ServerSelect{
 		Servers: form.NewDropdown("СЕРВЕРА", serversName, 0),
@@ -36,18 +35,59 @@ func (s *Server) handleConn(conn *minecraft.Conn) {
 	f := form.Form(serverForm)
 	data, _ := json.Marshal(f)
 
-	conn.WritePacket(&packet.ModalFormRequest{
+	err := conn.WritePacket(&packet.ModalFormRequest{
 		FormID:   0,
 		FormData: data,
 	})
+	if err != nil {
+		log.Println("not write packet, err:", err)
+		return
+	}
 
-	defer conn.Close()
+	serverInfo := s.choiceServer(conn)
 
-	for {
+	serverConn, err := minecraft.Dialer{
+		IdentityData:        conn.IdentityData(),
+		ClientData:          conn.ClientData(),
+		KeepXBLIdentityData: true,
+	}.Dial("raknet", serverInfo.Address)
+	if err != nil {
+		panic(err)
+	}
+
+	defer func() {
+		playerInfo := conn.IdentityData()
+		err := conn.Close()
+		if err != nil {
+			log.Println("not close connection, err", err)
+		}
+
+		err = serverConn.Close()
+		if err != nil {
+			log.Println("not close connection, err", err)
+		}
+
+		delete(s.connections, playerInfo.XUID)
+	}()
+
+	if err := serverConn.DoSpawn(); err != nil {
+		log.Println("not spawn user, err:", err)
+		return
+	}
+
+	go s.toServer(conn, serverConn)
+	s.toClient(conn, serverConn)
+}
+
+func (s *Server) choiceServer(conn *minecraft.Conn) *RemoteConfig {
+	serverSelected := false
+
+	server := RemoteConfig{}
+	for !serverSelected {
 		data, err := conn.ReadBytes()
 		if err != nil {
 			log.Println("not read packet, err:", err)
-			return
+			return nil
 		}
 
 		pk, err := decoder.ParseData(data)
@@ -58,14 +98,25 @@ func (s *Server) handleConn(conn *minecraft.Conn) {
 
 		switch pk.H.PacketID {
 		case packet.IDModalFormResponse:
-			form := packet.ModalFormResponse{}
+			formResponse := packet.ModalFormResponse{}
 			pIO := s.proto.NewReader(pk.Payload, 0, false)
-			form.Marshal(pIO)
+			formResponse.Marshal(pIO)
 
-			fmt.Println(form)
-			d, ok := form.ResponseData.Value()
-			fmt.Printf("ok: %v\n", ok)
-			fmt.Printf("string(d): %v\n", string(d))
+			data, ok := formResponse.ResponseData.Value()
+			if !ok {
+				return nil
+			}
+
+			res := []int{}
+			err := json.Unmarshal(data, &res)
+			if err != nil {
+				log.Println("not unmarshal form, err:", err)
+			}
+
+			server = s.cfg.Servers[res[0]]
+			serverSelected = true
 		}
 	}
+
+	return &server
 }
