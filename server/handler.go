@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"log"
+	"sync"
 
 	"github.com/df-mc/dragonfly/server/player/form"
 	"github.com/sandertv/gophertunnel/minecraft"
@@ -57,12 +58,6 @@ func (s *Server) handleConn(conn *minecraft.Conn) {
 		panic(err)
 	}
 
-	if err := conn.StartGame(serverConn.GameData()); err != nil {
-		log.Println("not start game, err:", err)
-
-		return
-	}
-
 	defer func() {
 		playerInfo := conn.IdentityData()
 		err := conn.Close()
@@ -78,8 +73,29 @@ func (s *Server) handleConn(conn *minecraft.Conn) {
 		delete(s.connections, playerInfo.XUID)
 	}()
 
-	if err := serverConn.DoSpawn(); err != nil {
-		log.Println("not spawn user, err:", err)
+	var g sync.WaitGroup
+	g.Add(2)
+
+	hasErr := false
+	go func() {
+		if err := conn.StartGame(serverConn.GameData()); err != nil {
+			log.Println("not start game, err:", err)
+			hasErr = true
+		}
+		g.Done()
+	}()
+
+	go func() {
+		if err := serverConn.DoSpawn(); err != nil {
+			log.Println("not start game, err:", err)
+			hasErr = true
+		}
+		g.Done()
+	}()
+
+	g.Wait()
+
+	if hasErr {
 		return
 	}
 
