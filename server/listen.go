@@ -9,6 +9,8 @@ import (
 func (s *Server) listen() {
 	listener := s.listener
 
+	defer listener.Close()
+
 	for {
 		conn, err := listener.Accept()
 		if err != nil {

@@ -41,6 +41,8 @@ func (s *Server) handleConn(conn *minecraft.Conn) {
 		FormData: data,
 	})
 
+	defer conn.Close()
+
 	for {
 		data, err := conn.ReadBytes()
 		if err != nil {
