@@ -107,6 +107,11 @@ func (s *Server) handleConn(conn *minecraft.Conn) {
 		Flags:           packet.MoveFlagTeleport,
 	})
 
+	if err := serverConn.DoSpawn(); err != nil {
+		log.Println("not spawn user, err:", err)
+		return
+	}
+
 	go s.toServer(conn, serverConn)
 	s.toClient(conn, serverConn)
 }

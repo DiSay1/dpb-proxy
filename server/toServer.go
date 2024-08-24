@@ -9,6 +9,21 @@ import (
 )
 
 func (s *Server) toServer(clientConn *minecraft.Conn, serverConn *minecraft.Conn) {
+	defer func() {
+		playerInfo := clientConn.IdentityData()
+		err := clientConn.Close()
+		if err != nil {
+			log.Println("not close connection, err", err)
+		}
+
+		err = serverConn.Close()
+		if err != nil {
+			log.Println("not close connection, err", err)
+		}
+
+		delete(s.connections, playerInfo.XUID)
+	}()
+
 	for {
 		data, err := clientConn.ReadBytes()
 		if err != nil {
