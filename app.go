@@ -6,7 +6,6 @@ import (
 
 	"github.com/pelletier/go-toml"
 	"proj.dichay.tech/dpb-proxy/modules"
-	"proj.dichay.tech/dpb-proxy/modules/discord"
 	"proj.dichay.tech/dpb-proxy/modules/logger"
 	"proj.dichay.tech/dpb-proxy/server"
 )
@@ -15,7 +14,6 @@ func main() {
 	cfg := readConfig()
 
 	mds := []modules.Module{
-		&discord.DiscordModule{},
 		&logger.LoggerModule{},
 	}
 

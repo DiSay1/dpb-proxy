@@ -27,7 +27,8 @@ func (dm *LoggerModule) ToServer(conn *minecraft.Conn, serverConn *minecraft.Con
 	switch pk.H.PacketID {
 	case packet.IDText:
 		text := packet.Text{}
-		pIO := dm.proto.NewReader(&pk.Payload, 0, false)
+		payload := pk.Payload
+		pIO := dm.proto.NewReader(&payload, 0, false)
 		text.Marshal(pIO)
 
 		log.Printf("%v: %v\n", text.SourceName, text.Message)
