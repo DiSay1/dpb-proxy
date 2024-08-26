@@ -65,8 +65,8 @@ func (s *Server) handleConn(c *minecraft.Conn) {
 		}
 
 		conn.WritePacket(&packet.Transfer{
-			Address: "51.68.143.191",
-			Port:    uint16(8080),
+			Address: s.cfg.Listener.PublicAddress,
+			Port:    s.cfg.Listener.PublicPort,
 		})
 		return
 	} else {
