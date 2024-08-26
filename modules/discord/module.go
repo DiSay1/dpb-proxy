@@ -48,7 +48,7 @@ func (dm *DiscordModule) ToServer(conn *minecraft.Conn, serverConn *minecraft.Co
 	switch pk.H.PacketID {
 	case packet.IDText:
 		text := packet.Text{}
-		pIO := dm.proto.NewReader(pk.Payload, 0, false)
+		pIO := dm.proto.NewReader(&pk.Payload, 0, false)
 		text.Marshal(pIO)
 
 		dm.lastToServerID = dm.lastToServerID + 1

@@ -2,6 +2,10 @@ package server
 
 type ListenerConfig struct {
 	Address string
+
+	// for change servers
+	PublicAddress string
+	PublicPort    uint16
 }
 
 type RemoteConfig struct {

@@ -3,9 +3,8 @@ package server
 import (
 	"encoding/json"
 	"log"
-	"strconv"
-	"strings"
 	"sync"
+	"time"
 
 	"github.com/df-mc/dragonfly/server/player/form"
 	"github.com/sandertv/gophertunnel/minecraft"
@@ -19,6 +18,13 @@ type ServerSelect struct {
 
 func (f ServerSelect) Submit(submitter form.Submitter) {
 }
+
+type userSeclet struct {
+	unixTime int64
+	conf     *RemoteConfig
+}
+
+var userServers = map[string]*userSeclet{}
 
 func (s *Server) handleConn(c *minecraft.Conn) {
 	playerIdentity := c.IdentityData()
@@ -36,14 +42,10 @@ func (s *Server) handleConn(c *minecraft.Conn) {
 		return
 	}
 
-	if err := conn.StartGame(minecraft.GameData{}); err != nil {
-		log.Println("not start game, err:", err)
+	userSelected := &userSeclet{}
+	res, ok := userServers[playerIdentity.XUID]
 
-		return
-	}
-
-	serverInfo := &RemoteConfig{}
-	if conn.ServerToConnect == nil {
+	if !ok {
 		if err := conn.StartGame(minecraft.GameData{}); err != nil {
 			log.Println("not start game, err:", err)
 
@@ -52,36 +54,59 @@ func (s *Server) handleConn(c *minecraft.Conn) {
 
 		log.Printf("%v joined!\n", conn.IdentityData().DisplayName)
 
-		serverInfo = s.handleSelectServer(conn.Conn)
+		serverInfo := s.handleSelectServer(conn.Conn)
 		if serverInfo == nil {
 			return
 		}
 
-		conn.ServerToConnect = serverInfo
-
-		addr := strings.Split(s.cfg.Listener.Address, ":")
-		port, _ := strconv.Atoi(addr[1])
+		userServers[playerIdentity.XUID] = &userSeclet{
+			unixTime: time.Now().Unix(),
+			conf:     serverInfo,
+		}
 
 		conn.WritePacket(&packet.Transfer{
-			Address: addr[0],
-			Port:    uint16(port),
+			Address: "51.68.143.191",
+			Port:    uint16(8080),
 		})
+		return
 	} else {
-		serverInfo = conn.ServerToConnect
+		if time.Now().Unix()-res.unixTime > 108000 {
+			if err := conn.StartGame(minecraft.GameData{}); err != nil {
+				log.Println("not start game, err:", err)
+
+				return
+			}
+
+			log.Printf("%v joined!\n", conn.IdentityData().DisplayName)
+
+			serverInfo := s.handleSelectServer(conn.Conn)
+			if serverInfo == nil {
+				return
+			}
+
+			userServers[playerIdentity.XUID] = &userSeclet{
+				unixTime: time.Now().Unix(),
+				conf:     serverInfo,
+			}
+
+			conn.WritePacket(&packet.Transfer{
+				Address: "51.68.143.191",
+				Port:    uint16(8080),
+			})
+			return
+		} else {
+			log.Printf("%v selected server!\n", playerIdentity.DisplayName)
+			userSelected = userServers[playerIdentity.XUID]
+		}
 	}
 
 	serverConn, err := minecraft.Dialer{
 		IdentityData:        conn.IdentityData(),
 		ClientData:          conn.ClientData(),
 		KeepXBLIdentityData: true,
-	}.Dial("raknet", serverInfo.Address)
+	}.Dial("raknet", userSelected.conf.Address)
 	if err != nil {
 		panic(err)
-	}
-
-	if err := serverConn.DoSpawn(); err != nil {
-		log.Println("not spawn user, err:", err)
-		return
 	}
 
 	defer func() {
@@ -96,17 +121,17 @@ func (s *Server) handleConn(c *minecraft.Conn) {
 	var g sync.WaitGroup
 	g.Add(2)
 
-	connected := false
+	connected := true
 	go func() {
 		if err := conn.StartGame(serverConn.GameData()); err != nil {
-			connected = true
+			connected = false
 		}
 		g.Done()
 	}()
 
 	go func() {
 		if err := serverConn.DoSpawn(); err != nil {
-			connected = true
+			connected = false
 		}
 		g.Done()
 	}()
@@ -116,10 +141,13 @@ func (s *Server) handleConn(c *minecraft.Conn) {
 	if connected {
 		go s.toServer(conn.Conn, serverConn)
 		s.toClient(conn.Conn, serverConn)
+	} else {
+		return
 	}
 }
 
 func (s *Server) handleSelectServer(conn *minecraft.Conn) *RemoteConfig {
+
 	serversName := make([]string, len(s.cfg.Servers))
 	for i, server := range s.cfg.Servers {
 		serversName[i] = server.Name
@@ -159,7 +187,7 @@ func (s *Server) handleSelectServer(conn *minecraft.Conn) *RemoteConfig {
 		switch pk.H.PacketID {
 		case packet.IDModalFormResponse:
 			formResponse := packet.ModalFormResponse{}
-			pIO := s.proto.NewReader(pk.Payload, 0, false)
+			pIO := s.proto.NewReader(&pk.Payload, 0, false)
 			formResponse.Marshal(pIO)
 
 			data, ok := formResponse.ResponseData.Value()

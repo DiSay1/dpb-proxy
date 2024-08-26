@@ -9,8 +9,7 @@ import (
 
 type PacketData struct {
 	H       *packet.Header
-	Full    []byte
-	Payload *bytes.Buffer
+	Payload bytes.Buffer
 }
 
 func ParseData(data []byte) (*PacketData, error) {
@@ -23,5 +22,5 @@ func ParseData(data []byte) (*PacketData, error) {
 		return nil, fmt.Errorf("read packet header: %w", err)
 	}
 
-	return &PacketData{header, data, buf}, nil
+	return &PacketData{header, *buf}, nil
 }
