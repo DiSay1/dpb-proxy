@@ -59,7 +59,7 @@ func (s *Server) handleConn(c *minecraft.Conn) {
 
 		conn.ServerToConnect = serverInfo
 
-		addr := strings.Split(serverInfo.Address, ":")
+		addr := strings.Split(s.cfg.Listener.Address, ":")
 		port, _ := strconv.Atoi(addr[1])
 
 		conn.WritePacket(&packet.Transfer{
