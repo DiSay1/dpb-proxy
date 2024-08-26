@@ -18,23 +18,29 @@ func (s *Server) listen() {
 			continue
 		}
 
-		c, ok := conn.(*minecraft.Conn)
+		minecraftConn, ok := conn.(*minecraft.Conn)
 		if !ok {
-			c.Close()
+			minecraftConn.Close()
 			continue
 		}
 
-		playerIdentity := c.IdentityData()
-		_, ok = s.connections[playerIdentity.XUID]
+		playerIdentity := minecraftConn.IdentityData()
+		serverConn, ok := s.connections[playerIdentity.XUID]
 		if ok {
-			err := c.Close()
+			if serverConn.ServerToConnect != nil {
+				go s.handleConn(minecraftConn)
+			}
+			err := minecraftConn.Close()
 			if err != nil {
 				log.Println("not close connection, err", err)
 			}
 			continue
 		}
-		s.connections[playerIdentity.XUID] = &Conn{c}
+		s.connections[playerIdentity.XUID] = &Conn{
+			ServerToConnect: nil,
+			Conn:            minecraftConn,
+		}
 
-		go s.handleConn(c)
+		go s.handleConn(minecraftConn)
 	}
 }

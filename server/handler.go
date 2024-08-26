@@ -3,12 +3,12 @@ package server
 import (
 	"encoding/json"
 	"log"
-	"time"
+	"strconv"
+	"strings"
+	"sync"
 
 	"github.com/df-mc/dragonfly/server/player/form"
-	"github.com/go-gl/mathgl/mgl32"
 	"github.com/sandertv/gophertunnel/minecraft"
-	"github.com/sandertv/gophertunnel/minecraft/protocol"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 	"proj.dichay.tech/dpb-proxy/decoder"
 )
@@ -20,8 +20,21 @@ type ServerSelect struct {
 func (f ServerSelect) Submit(submitter form.Submitter) {
 }
 
-func (s *Server) handleConn(conn *minecraft.Conn) {
-	log.Printf("%v joined!\n", conn.IdentityData().DisplayName)
+func (s *Server) handleConn(c *minecraft.Conn) {
+	playerIdentity := c.IdentityData()
+	defer func() {
+		err := c.Close()
+		if err != nil {
+			log.Println("not close connection, err", err)
+		}
+
+		delete(s.connections, playerIdentity.XUID)
+	}()
+
+	conn, ok := s.connections[playerIdentity.XUID]
+	if !ok {
+		return
+	}
 
 	if err := conn.StartGame(minecraft.GameData{}); err != nil {
 		log.Println("not start game, err:", err)
@@ -29,6 +42,84 @@ func (s *Server) handleConn(conn *minecraft.Conn) {
 		return
 	}
 
+	serverInfo := &RemoteConfig{}
+	if conn.ServerToConnect == nil {
+		if err := conn.StartGame(minecraft.GameData{}); err != nil {
+			log.Println("not start game, err:", err)
+
+			return
+		}
+
+		log.Printf("%v joined!\n", conn.IdentityData().DisplayName)
+
+		serverInfo = s.handleSelectServer(conn.Conn)
+		if serverInfo == nil {
+			return
+		}
+
+		conn.ServerToConnect = serverInfo
+
+		addr := strings.Split(serverInfo.Address, ":")
+		port, _ := strconv.Atoi(addr[1])
+
+		conn.WritePacket(&packet.Transfer{
+			Address: addr[0],
+			Port:    uint16(port),
+		})
+	} else {
+		serverInfo = conn.ServerToConnect
+	}
+
+	serverConn, err := minecraft.Dialer{
+		IdentityData:        conn.IdentityData(),
+		ClientData:          conn.ClientData(),
+		KeepXBLIdentityData: true,
+	}.Dial("raknet", serverInfo.Address)
+	if err != nil {
+		panic(err)
+	}
+
+	if err := serverConn.DoSpawn(); err != nil {
+		log.Println("not spawn user, err:", err)
+		return
+	}
+
+	defer func() {
+		err = serverConn.Close()
+		if err != nil {
+			log.Println("not close connection, err", err)
+		}
+
+		delete(s.connections, playerIdentity.XUID)
+	}()
+
+	var g sync.WaitGroup
+	g.Add(2)
+
+	connected := false
+	go func() {
+		if err := conn.StartGame(serverConn.GameData()); err != nil {
+			connected = true
+		}
+		g.Done()
+	}()
+
+	go func() {
+		if err := serverConn.DoSpawn(); err != nil {
+			connected = true
+		}
+		g.Done()
+	}()
+
+	g.Wait()
+
+	if connected {
+		go s.toServer(conn.Conn, serverConn)
+		s.toClient(conn.Conn, serverConn)
+	}
+}
+
+func (s *Server) handleSelectServer(conn *minecraft.Conn) *RemoteConfig {
 	serversName := make([]string, len(s.cfg.Servers))
 	for i, server := range s.cfg.Servers {
 		serversName[i] = server.Name
@@ -46,77 +137,9 @@ func (s *Server) handleConn(conn *minecraft.Conn) {
 	})
 	if err != nil {
 		log.Println("not write packet, err:", err)
-		return
+		return nil
 	}
 
-	serverInfo := s.choiceServer(conn)
-
-	serverConn, err := minecraft.Dialer{
-		IdentityData:        conn.IdentityData(),
-		ClientData:          conn.ClientData(),
-		KeepXBLIdentityData: true,
-	}.Dial("raknet", serverInfo.Address)
-	if err != nil {
-		panic(err)
-	}
-
-	defer func() {
-		playerInfo := conn.IdentityData()
-		err := conn.Close()
-		if err != nil {
-			log.Println("not close connection, err", err)
-		}
-
-		err = serverConn.Close()
-		if err != nil {
-			log.Println("not close connection, err", err)
-		}
-
-		delete(s.connections, playerInfo.XUID)
-	}()
-
-	d := serverConn.GameData()
-
-	conn.WritePacket(&packet.ChangeDimension{
-		Dimension:       d.Dimension,
-		Position:        d.PlayerPosition,
-		LoadingScreenID: protocol.Option(uint32(time.Now().Unix())),
-	})
-	conn.WritePacket(&packet.StopSound{StopAll: true})
-	conn.WritePacket(&packet.PlayStatus{Status: packet.PlayStatusPlayerSpawn})
-
-	conn.WritePacket(&packet.PlayerAction{
-		EntityRuntimeID: d.EntityRuntimeID,
-		ActionType:      protocol.PlayerActionDimensionChangeDone,
-	})
-
-	conn.WritePacket(&packet.MovePlayer{
-		EntityRuntimeID: d.EntityRuntimeID,
-
-		Position: d.PlayerPosition,
-		Pitch:    d.Pitch,
-		Yaw:      d.Yaw,
-		HeadYaw:  d.Yaw,
-		Mode:     packet.MoveModeTeleport,
-	})
-
-	conn.WritePacket(&packet.MoveActorAbsolute{
-		EntityRuntimeID: d.EntityRuntimeID,
-		Position:        d.PlayerPosition,
-		Rotation:        mgl32.Vec3{d.Pitch, d.Yaw, d.Yaw},
-		Flags:           packet.MoveFlagTeleport,
-	})
-
-	if err := serverConn.DoSpawn(); err != nil {
-		log.Println("not spawn user, err:", err)
-		return
-	}
-
-	go s.toServer(conn, serverConn)
-	s.toClient(conn, serverConn)
-}
-
-func (s *Server) choiceServer(conn *minecraft.Conn) *RemoteConfig {
 	serverSelected := false
 
 	server := RemoteConfig{}
