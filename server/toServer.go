@@ -39,7 +39,7 @@ func (s *Server) toServer(clientConn *minecraft.Conn, serverConn *minecraft.Conn
 				if err != nil {
 					log.Println(err, ok)
 				} else {
-					if !ok {
+					if ok {
 						continue
 					}
 				}

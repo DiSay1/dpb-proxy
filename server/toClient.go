@@ -45,7 +45,7 @@ func (s *Server) toClient(clientConn *minecraft.Conn, serverConn *minecraft.Conn
 				if err != nil {
 					log.Println(err, ok)
 				} else {
-					if !ok {
+					if ok {
 						continue
 					}
 				}

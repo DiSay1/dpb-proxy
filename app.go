@@ -7,6 +7,7 @@ import (
 	"github.com/pelletier/go-toml"
 	"proj.dichay.tech/dpb-proxy/modules"
 	"proj.dichay.tech/dpb-proxy/modules/discord"
+	"proj.dichay.tech/dpb-proxy/modules/logger"
 	"proj.dichay.tech/dpb-proxy/server"
 )
 
@@ -15,6 +16,7 @@ func main() {
 
 	mds := []modules.Module{
 		&discord.DiscordModule{},
+		&logger.LoggerModule{},
 	}
 
 	srv := server.New(&cfg, mds)
